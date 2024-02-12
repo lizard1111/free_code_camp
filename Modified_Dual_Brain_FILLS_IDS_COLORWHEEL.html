@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FullBrain</title>
+    <style>
+        body, html {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color:rgb(60, 46, 46);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            font-family: Helvetica, sans-serif;
+        }
+    
+        .svg-container {
+            overflow-x: hidden;
+            overflow-y: hidden;
+            display: flex;
+            align-items: flex-start;
+            scroll-snap-type: x mandatory mandatory;
+            flex-grow: 1;
+        }
+    
+        .svg-item {
+            flex-shrink: 0;
+            width: 100%;
+            height: 100%;
+            scroll-snap-align: start;
+            position: relative;
+
+        }
+    
+        #textArea {
+            height: auto;
+            color: whitesmoke;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+    
+
+    
+        #acronymDisplay {
+            font-size: 36px;
+            margin-top: 10px;
+        }
+    
+        #nameDisplay {
+            font-size: 20;
+            margin-top: 12px;
+        }
+    
+#svgContainer {
+    filter: hue-rotate(0deg);
+}
+
+#brainContainer {
+    display: flex;
+    justify-content: space-around;
+}
+
+.brain {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#svgContainer1, #svgContainer2 {
+    filter: hue-rotate(0deg) grayscale(0%);
+}
+</style>
+    
+    
+    
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const svgContainer = document.querySelector('#svgContainer');
+            const svgPath = 'SVG_IDs_fills/'; 
+            const numSVGs = 527 ; 
+            let autoScrollSpeed = 10; 
+            let autoScrollInterval;
+            let isPlaying = false;
+
+            const acronymDisplay = document.getElementById('acronymDisplay');
+            const nameDisplay = document.getElementById('nameDisplay');
+
+            for (let i = numSVGs; i > 0; i--) {
+                const svgElement = document.createElement('div');
+                svgElement.classList.add('svg-item');
+
+                fetch(`${svgPath}P56_Annotation_${(i-1).toString().padStart(4, '0')}.svg`)
+                    .then(response => response.text())
+                    .then(data => {
+                        svgElement.innerHTML = data;
+
+                        const svgPaths = svgElement.querySelectorAll('path');
+                        svgPaths.forEach(path => {
+                            const originalStrokeWidth = path.style.strokeWidth || '0.5'; 
+
+                            path.addEventListener('mouseover', function() {
+                                if (path.style.fill !== 'none') {
+                                    const computedStyle = getComputedStyle(path);
+                                    const colorRGB = computedStyle.fill;
+                                    const colorHex = rgbToHex(colorRGB);
+                                    getData(colorHex).then(data => {
+                                        const [id, hex, acronym, name] = data;
+                                        acronymDisplay.textContent = `${acronym}`;
+                                        nameDisplay.textContent = `${name}`;
+                                    });
+
+                                    path.style.strokeWidth = '1'; 
+                                    path.style.stroke = 'black'; 
+                                    path.style.strokeOpacity = '0.5'
+                                    path.style.strokeDasharray = (1) 
+
+                                }
+                            });
+
+                            path.addEventListener('mouseout', function() {
+                                if (path.style.fill !== 'none') {
+                                    acronymDisplay.textContent = '';
+                                    nameDisplay.textContent = '';
+                                    path.style.strokeWidth = originalStrokeWidth;
+                                    path.style.stroke = 'none'; 
+                                    path.style.fillOpacity = 1
+                                }
+                            });
+                        });
+                    });
+
+                svgContainer.appendChild(svgElement);
+            }
+
+            const svgItems = Array.from(svgContainer.querySelectorAll('.svg-item'));
+            let currentIndex = 0;
+
+            function showCurrentSVG() {
+                svgItems[currentIndex].style.display = 'block';
+            }
+
+            function hideCurrentSVG() {
+                svgItems[currentIndex].style.display = 'none';
+            }
+
+            function showNextSVG() {
+                hideCurrentSVG();
+                currentIndex = (currentIndex + 1) % numSVGs;
+                showCurrentSVG();
+            }
+
+            function showPreviousSVG() {
+                hideCurrentSVG();
+                if (currentIndex === 0) {
+                    currentIndex = numSVGs - 1;
+                } else {
+                    currentIndex--;
+                }
+                showCurrentSVG();
+            }
+
+            function startAutoScroll() {
+                autoScrollInterval = setInterval(() => {
+                    if (isPlaying) {
+                        showPreviousSVG();
+                    }
+                }, autoScrollSpeed);
+            }
+
+            function pauseAutoScroll() {
+                clearInterval(autoScrollInterval);
+            }
+
+            showCurrentSVG();
+            startAutoScroll();
+
+            function handleScroll(event) {
+                event.preventDefault();
+                const delta = Math.sign(event.deltaY);
+                if (delta > 0) {
+                    showNextSVG();
+                } else if (delta < 0) {
+                    showPreviousSVG();
+                }
+            }
+
+            svgContainer.addEventListener('wheel', handleScroll);
+
+
+            // function togglePlayPause() {
+            //     isPlaying = !isPlaying;
+            //     if (isPlaying) {
+            //         startAutoScroll();
+            //     } else {
+            //         pauseAutoScroll();
+            //     }
+            // }
+
+            function handleKeyPress(event) {
+                switch (event.code) {
+                    case 'Space':
+                        event.preventDefault();
+                        togglePlayPause();
+                        break;
+                    case 'ArrowRight': 
+                        event.preventDefault();
+                        if (isPlaying) togglePlayPause();
+                        showPreviousSVG();
+                        break;
+                    case 'ArrowLeft':
+                        event.preventDefault();
+                        if (isPlaying) togglePlayPause();
+                        showNextSVG();
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            document.addEventListener('keydown', handleKeyPress);
+        });
+
+        // Helper function to convert RGB color to hex color
+        function rgbToHex(rgb) {
+            const values = rgb.match(/\d+/g);
+            const hexValues = values.map(value => {
+                const hex = parseInt(value).toString(16);
+                return hex.length === 1 ? "0" + hex : hex;
+            });
+            const hexWithoutHash = hexValues.join("").toUpperCase();
+            return hexWithoutHash;
+        }
+
+        // Helper function to get the data from the JSON array
+        async function getData(hex) {
+            const response = await fetch('color_acronym_name_mapping.json');
+            const jsonData = await response.json();
+            const data = jsonData.find(item => item[1].toLowerCase() === hex.toLowerCase()) || [];
+            return data;
+        }
+    </script>
+</head>
+<body>
+
+    <div class="svg-container" id="svgContainer"></div>
+    <div id="textArea">
+        <p id="acronymDisplay"></p>
+        <p id="nameDisplay"></p>
+    </div>
+
+<!-- Slider for hue rotation -->
+
+<div id="brainContainer">
+
+    <div class="brain">
+        <!-- First Brain SVG and Sliders -->
+        <div id="svgContainer1">
+            </div>
+        <!-- Slider for hue rotation -->
+        <input type="range" min="0" max="360" value="0" class="hueSlider" style="width: 100%; margin: 10px 0;">
+        <!-- Slider for desaturation -->
+        <input type="range" min="0" max="100" value="0" class="desatSlider" style="width: 100%; margin: 10px 0;">
+    </div>
+
+    <div class="brain">
+        <!-- Second Brain SVG and Sliders -->
+        <div id="svgContainer2">
+        </div>
+        <!-- Slider for hue rotation -->
+        <input type="range" min="0" max="360" value="0" class="hueSlider" style="width: 100%; margin: 10px 0;">
+        <!-- Slider for desaturation -->
+        <input type="range" min="0" max="100" value="0" class="desatSlider" style="width: 100%; margin: 10px 0;">
+    </div>
+
+    <div class="brain">
+        <!-- Second Brain SVG and Sliders -->
+        <div id="svgContainer2">
+            </div>
+        <!-- Slider for hue rotation -->
+        <input type="range" min="0" max="360" value="0" class="hueSlider" style="width: 100%; margin: 10px 0;">
+        <!-- Slider for desaturation -->
+        <input type="range" min="0" max="100" value="0" class="desatSlider" style="width: 100%; margin: 10px 0;">
+    </div>
+
+    <div class="brain">
+        <!-- Second Brain SVG and Sliders -->
+        <div id="svgContainer2">
+        </div>
+        <!-- Slider for hue rotation -->
+        <input type="range" min="0" max="360" value="0" class="hueSlider" style="width: 100%; margin: 10px 0;">
+        <!-- Slider for desaturation -->
+        <input type="range" min="0" max="100" value="0" class="desatSlider" style="width: 100%; margin: 10px 0;">
+    </div>
+
+</div>
+
+<script>
+    // JavaScript to update hue rotation and desaturation based on slider values
+    const hueSliders = document.querySelectorAll('.hueSlider');
+    const desatSliders = document.querySelectorAll('.desatSlider');
+    const svgContainers = document.querySelectorAll('[id^="svgContainer"]');
+
+    hueSliders.forEach((slider, index) => {
+        slider.addEventListener('input', function() {
+            const hueValue = slider.value;
+            svgContainers[index].style.filter = `hue-rotate(${hueValue}deg) grayscale(${desatSliders[index].value}%)`;
+        });
+    });
+
+    desatSliders.forEach((slider, index) => {
+        slider.addEventListener('input', function() {
+            const desatValue = slider.value;
+            svgContainers[index].style.filter = `hue-rotate(${hueSliders[index].value}deg) grayscale(${desatValue}%)`;
+        });
+    });
+</script>
+
+</body>
+</html>
+
+
+

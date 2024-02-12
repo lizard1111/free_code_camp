@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Merged Data Viewer</title>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Merged Data Table</h2>
+<div id="dataDisplay"></div>
+
+<script>
+    let mergedData = [];
+
+    function loadAndMergeData() {
+        let fosData, ccfData;
+
+        // Load the first CSV
+        Papa.parse('FemaleRR_Fed_Fos_Left.csv', {
+            download: true,
+            header: true,
+            complete: function (results1) {
+                fosData = results1.data;
+
+                // Load the second CSV
+                Papa.parse('merged_query.csv', {
+                    download: true,
+                    header: true,
+                    complete: function (results2) {
+                        ccfData = results2.data;
+
+                        // Merge datasets based on the 'acronym' column
+                        fosData.forEach(fosRow => {
+                            const matchingRow = ccfData.find(ccfRow => ccfRow.acronym === fosRow.acronym);
+                            if (matchingRow) {
+                                mergedData.push({ ...fosRow, ...matchingRow });
+                            }
+                        });
+
+                        // Display the merged data
+                        displayData(mergedData);
+                    }
+                });
+            }
+        });
+    }
+
+    function displayData(data) {
+    const table = d3.select("#dataDisplay").append("table");
+    const thead = table.append("thead");
+    const tbody = table.append("tbody");
+
+    // Column names extracted from the first row of the data
+    const columns = Object.keys(data[0]);
+
+    // Append the header row
+    thead.append("tr")
+        .selectAll("th")
+        .data(columns)
+        .enter()
+        .append("th")
+        .text(d => d);
+
+    // Create a row for each object in the data and populate cells
+    const rows = tbody.selectAll("tr")
+        .data(data)
+        .enter()
+        .append("tr");
+
+    rows.selectAll("td")
+        .data(d => columns.map(column => ({ column, value: d[column], rowData: d })))
+        .enter()
+        .append("td")
+        .text(d => d.value)
+        .style("background-color", d => {
+            // Check if value is a valid hex code
+            if (/^[A-Fa-f0-9]{6}$/.test(d.value)) {
+                return "#" + d.value;
+            } else if (d.column === 'name') {
+                return "#" + d.rowData.color_hex_triplet;
+            } else if (d.column === 'acronym') {
+                return "#" + d.rowData.svg_hex_triplet;
+            }
+            return null;
+        });
+}
+
+
+
+    // Call the function to initiate the merging process
+    loadAndMergeData();
+
+</script>
+
+</body>
+</html>

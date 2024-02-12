@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Merged Data Viewer</title>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+        th.sortable:hover {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Merged Data Table</h2>
+<button id="download-csv">Download CSV</button>
+<br>
+<label for="color-map">Color Map:</label>
+<select id="color-map">
+  <option value="interpolateViridis">Viridis</option>
+  <option value="interpolateInferno">Inferno</option>
+  <option value="interpolateMagma">Magma</option>
+  <option value="interpolatePlasma">Plasma</option>
+  <option value="interpolateWarm">Warm</option>
+  <option value="interpolateCool">Cool</option>
+  <option value="interpolateRainbow">Rainbow</option>
+  <option value="interpolateCubehelixDefault">Cubehelix</option>
+</select>
+<br>
+<label for="min-max-ratio">Min/Max Ratio (0.0 - 1.0):</label>
+<input type="range" id="min-max-ratio" name="min-max-ratio" min="0.0" max="1.0" step="0.01" value="0.0">
+<div id="dataDisplay"></div>
+
+<script>
+    let mergedData = [];
+
+    function loadAndMergeData() {
+        let fosData, ccfData;
+
+        // Load the first CSV
+        Papa.parse('FemaleRR_Fed_Fos_Left.csv', {
+            download: true,
+            header: true,
+            complete: function (results1) {
+                fosData = results1.data;
+
+                // // Filter out empty or malformed rows
+                // fosData = fosData.filter(row => Object.values(row).every(value => value !== ""));
+
+                // Filter out empty or malformed rows and log them
+                fosData = fosData.filter(row => {
+                const isValid = Object.values(row).every(value => value !== "");
+                if (!isValid) {
+                    console.log('Invalid row in first CSV:', row);
+                }
+                return isValid;
+                });
+
+                // Load the second CSV
+                Papa.parse('merged_query.csv', {
+                    download: true,
+                    header: true,
+                    complete: function (results2) {
+                        ccfData = results2.data;
+
+                        // Merge datasets based on the 'acronym' column
+                        fosData.forEach(fosRow => {
+                            const matchingRow = ccfData.find(ccfRow => ccfRow.acronym === fosRow.acronym);
+                            if (matchingRow) {
+                                mergedData.push({ ...fosRow, ...matchingRow });
+                            }
+                        });
+
+                        // Apply transformations on merged data
+                        mergedData.forEach(row => {
+                            row['volume (µM^3)'] = (parseFloat(row['volume (mm^3)']) * 1000).toFixed(2);
+                            row['density (cells/µM^3)'] = (parseFloat(row['density (cells/mm^3)']) / 1000).toFixed(2);
+                            row['volume (mm^3)'] = parseFloat(row['volume (mm^3)']).toFixed(2);
+                            row['atlas_id'] = Math.floor(row['atlas_id']).toString();
+                            row['parent_structure_id'] = Math.floor(row['parent_structure_id']).toString();
+                        });
+
+                        // Display the merged data
+                        displayData(mergedData);
+                    }
+                });
+            }
+        });
+    }
+
+        // Add event listener for download button
+        document.getElementById('download-csv').addEventListener('click', function() {
+            let csvContent = Papa.unparse(mergedData);
+            var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            var url = URL.createObjectURL(blob);
+            var link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "mergedData.csv");
+            link.click();
+        });
+
+        // Add event listener for color map dropdown
+        document.getElementById('color-map').addEventListener('change', function() {
+            displayData(mergedData);
+        });
+
+        // Add event listener for min/max ratio slider
+        document.getElementById('min-max-ratio').addEventListener('input', function() {
+            displayData(mergedData);
+        });
+    
+
+    function displayData(data) {
+        // Clear existing table if any
+        d3.select("#dataDisplay").html("");
+
+        const table = d3.select("#dataDisplay").append("table");
+        const thead = table.append("thead");
+        const tbody = table.append("tbody");
+
+        // Column names extracted from the first row of the data
+        let columns = Object.keys(data[0]);
+
+        // Exclude 'structure id path' and 'graph order' from columns
+        columns = columns.filter(column => column !== 'structure_id_path' && column !== 'graph_order');
+        
+        // Exclude 'parent_structure_id' and 'color_hex_triplet' from columns
+        columns = columns.filter(column => column !== 'parent_structure_id' && column !== 'color_hex_triplet');
+        
+        // Append the header row
+        thead.append("tr")
+            .selectAll("th")
+            .data(columns)
+            .enter()
+            .append("th")
+            .text(d => d)
+            .classed("sortable", true)
+            .each(function (d) {
+                this.sortAscending = true;  // Initialize sort state to ascending
+            })
+            .on("click", function(d) {
+                if (this.sortAscending) {
+                    tbody.selectAll("tr").sort((a, b) => {
+                        if (isNaN(a[d])) {
+                            return d3.ascending(a[d], b[d]); // string comparison
+                        } else {
+                            return d3.ascending(parseFloat(a[d]), parseFloat(b[d])); // numeric comparison
+                        }
+                    });
+                } else {
+                    tbody.selectAll("tr").sort((a, b) => {
+                        if (isNaN(a[d])) {
+                            return d3.descending(a[d], b[d]); // string comparison
+                        } else {
+                            return d3.descending(parseFloat(a[d]), parseFloat(b[d])); // numeric comparison
+                        }
+                    });
+                }
+                this.sortAscending = !this.sortAscending;  // Toggle sort state
+            });
+
+        // Create a row for each object in the data and populate cells
+        const rows = tbody.selectAll("tr")
+            .data(data)
+            .enter()
+            .append("tr");
+
+        // Define color scales
+        const viridisColumns = ['count', 'volume (mm^3)', 'density (cells/mm^3)', 'volume (µM^3)', 'density (µM^3)'];
+        const rainbowColumns = ['depth', 'sphinx_id', 'id', 'atlas_id'];
+        const colorMap = d3[document.getElementById('color-map').value];
+        const minMaxRatio = parseFloat(document.getElementById('min-max-ratio').value);
+        const colorScale = d3.scaleSequential(colorMap);
+
+        rows.selectAll("td")
+            .data(d => columns.map(column => ({ column, value: d[column], rowData: d })))
+            .enter()
+            .append("td")
+            .text(d => {
+                if (['count', 'density (cells/mm^3)', 'volume (µM^3)', 'density (cells/µM^3)', 'volume (mm^3)'].includes(d.column)) {
+                    return parseFloat(d.value).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+                }
+                return d.value;
+            })
+            .style("background-color", d => {
+                if (viridisColumns.includes(d.column)) {
+                    const columnData = data.map(row => +row[d.column]);
+                    const minVal = d3.min(columnData) - (d3.max(columnData) - d3.min(columnData)) * minMaxRatio;
+                    colorScale.domain([minVal, d3.max(columnData)]);
+                    return colorScale(+d.value);
+                } 
+                else if (rainbowColumns.includes(d.column)) {
+                    const rainbowScale = d3.scaleSequential(d3.interpolateRainbow)
+                        .domain([d3.min(data, r => +r[d.column]), d3.max(data, r => +r[d.column])]);
+                    return rainbowScale(+d.value);
+                } 
+                else if (['name', 'acronym'].includes(d.column)) {
+                    return "#" + d.rowData.color_hex_triplet;
+                } 
+                else if (['color_hex_triplet', 'svg_hex'].includes(d.column)) {
+                    return "#" + d.value;
+                }
+                return null;
+            });
+    }
+
+    // Call the function to initiate the merging process
+    loadAndMergeData();
+
+</script>
+
+</body>
+</html>
