@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Merged Data Viewer</title>
+    <title>CSV Tool</title>
     <script src="https://d3js.org/d3.v5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
@@ -20,17 +20,45 @@
         th.sortable:hover {
             cursor: pointer;
         }
+        body {
+            font-family: 'Helvetica', sans-serif
+        }
+
+        th {
+        position: sticky;
+        top: 0;
+        background-color: white; /* Add a background color to the header to prevent cells underneath from showing through */
+        opacity: 0.9;
+        }
+    
     </style>
 </head>
 <body>
 
-<h2>Merged Data Table</h2>
+<h2>CSV Tool</h2>
 <button id="download-csv">Download CSV</button>
 <br>
+<label for="color-map">Color Map:</label>
+<select id="color-map">
+  <option value="interpolateViridis">Viridis</option>
+  <option value="interpolateInferno">Inferno</option>
+  <option value="interpolateMagma">Magma</option>
+  <option value="interpolatePlasma">Plasma</option>
+  <option value="interpolateWarm">Warm</option>
+  <option value="interpolateCool">Cool</option>
+  <option value="interpolateRainbow">Rainbow</option>
+  <option value="interpolateCubehelixDefault">Cubehelix</option>
+</select>
+<br>
+<label for="min-max-ratio">Min/Max Ratio (0.0 - 1.0):</label>
+<input type="range" id="min-max-ratio" name="min-max-ratio" min="0.0" max="1.0" step="0.01" value="0.0">
+<button id="hide-depth">Hide Depth Not Equal to 6</button>
+<button id="show-selected-columns">Simple View</button>
 <div id="dataDisplay"></div>
 
 <script>
     let mergedData = [];
+    let showAllColumns = true;
 
     function loadAndMergeData() {
         let fosData, ccfData;
@@ -41,6 +69,9 @@
             header: true,
             complete: function (results1) {
                 fosData = results1.data;
+
+                // // Filter out empty or malformed rows
+                // fosData = fosData.filter(row => Object.values(row).every(value => value !== ""));
 
                 // Filter out empty or malformed rows and log them
                 fosData = fosData.filter(row => {
@@ -82,17 +113,47 @@
             }
         });
     }
+    let showAllDepths = true;
+        document.getElementById('hide-depth').addEventListener('click', function() {
+            showAllDepths = !showAllDepths; // Toggle the state
+            if (showAllDepths) {
+                // If showing all depths, set all rows to be visible
+                d3.selectAll("tr").style("display", null);
+            } else {
+                // If not showing all depths, hide rows with depth not equal to 6
+                d3.selectAll(".not-depth-6").style("display", "none");
+            }
+            // Redisplay the data with the new state
+            displayData(mergedData);
+        });
 
-    // Add event listener for download button
-    document.getElementById('download-csv').addEventListener('click', function() {
-        let csvContent = Papa.unparse(mergedData);
-        var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        var url = URL.createObjectURL(blob);
-        var link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", "mergedData.csv");
-        link.click();
-    });
+        document.getElementById('show-selected-columns').addEventListener('click', function() {
+            showAllColumns = !showAllColumns; // Toggle the state
+            // Redisplay the data with the new state
+            displayData(mergedData);
+        });
+
+        // Add event listener for download button
+        document.getElementById('download-csv').addEventListener('click', function() {
+            let csvContent = Papa.unparse(mergedData);
+            var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            var url = URL.createObjectURL(blob);
+            var link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "mergedData.csv");
+            link.click();
+        });
+
+        // Add event listener for color map dropdown
+        document.getElementById('color-map').addEventListener('change', function() {
+            displayData(mergedData);
+        });
+
+        // Add event listener for min/max ratio slider
+        document.getElementById('min-max-ratio').addEventListener('input', function() {
+            displayData(mergedData);
+        });
+    
 
     function displayData(data) {
         // Clear existing table if any
@@ -102,17 +163,20 @@
         const thead = table.append("thead");
         const tbody = table.append("tbody");
 
-        // Column names extracted from the first row of the data
         let columns = Object.keys(data[0]).filter(column => 
             column !== 'structure_id_path' && 
             column !== 'graph_order' &&
             column !== 'parent_structure_id' && 
-            // column !== 'color_hex_triplet' &&
+            column !== 'color_hex_triplet' &&
             column !== 'atlas_id' && 
-            column !== 'svg_hex'
+            column !== 'svg_hex' &&
+            column !== 'id'
         );
 
-        // Append the header row
+        if (!showAllColumns) {
+            columns = ['name', 'acronym', 'count', 'density (cells/mm^3)', 'sphinx_id', 'depth'];
+        }
+        
         thead.append("tr")
             .selectAll("th")
             .data(columns)
@@ -141,46 +205,85 @@
                         }
                     });
                 }
+
                 this.sortAscending = !this.sortAscending;  // Toggle sort state
             });
 
-        // Create a row for each object in the data and populate cells
+        // Filter data based on the current state
+        const filteredData = showAllDepths ? data : data.filter(d => d.depth == 6);
+
         const rows = tbody.selectAll("tr")
-            .data(data)
+            .data(filteredData) // Use filteredData instead of data
             .enter()
-            .append("tr");
+            .append("tr")
+            .attr("class", d => d.depth == 6 ? "depth-6" : "not-depth-6"); // Add this line
 
-            const countValues = data.map(d => +d.count);
-            const countScale = d3.scaleSequential(d3.interpolateViridis)
-                .domain(d3.extent(countValues));
+        // Define color scales
+        const viridisColumns = ['count', 'volume (mm^3)', 'density (cells/mm^3)', 'volume (µM^3)', 'density (cells/µM^3)', 'st_level', 'density (cells/µM^3)'];
+        const rainbowColumns = ['depth', 'sphinx_id', 'id', 'atlas_id'];
+        const colorMap = d3[document.getElementById('color-map').value];
+        const minMaxRatio = parseFloat(document.getElementById('min-max-ratio').value);
+        const colorScale = d3.scaleSequential(colorMap);
 
-            rows.selectAll("td")
+        rows.selectAll("td")
             .data(d => columns.map(column => ({ column, value: d[column], rowData: d })))
             .enter()
             .append("td")
-            .text(d => {
+            .html(d => {
                 if (d.column === 'count') {
                     // Format 'count' as an integer
-                    return d3.format(",")(d.value);
+                    return parseInt(d.value).toLocaleString('en-US');
                 } else if (['density (cells/mm^3)', 'volume (µM^3)', 'density (cells/µM^3)', 'volume (mm^3)'].includes(d.column)) {
                     // Format other numeric columns with 2 decimal places
-                    return d3.format(".2f")(d.value);
-                } else if (['name', 'acronym'].includes(d.column)) {
-                    // Handle 'name' and 'acronym' columns
-                    return d.value;
+                    return parseFloat(d.value).toLocaleString('en-US', {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0
+                    });
+                } else if (d.column === 'acronym') {
+                    // Make acronyms bold
+                    return '<b>' + d.value + '</b>';
                 }
-                // Leave other values as they are
                 return d.value;
             })
+
             .style("background-color", d => {
-                if (d.column === 'count' || d.column.includes('volume') || d.column.includes('density')) {
-                    return countScale(+d.value);
-            } else if (['name', 'acronym'].includes(d.column)) {
-                return "#" + d.rowData.color_hex_triplet;
+                let color;
+                if (viridisColumns.includes(d.column)) {
+                    // const columnData = data.map(row => +row[d.column]);
+                    const columnData = filteredData.map(row => +row[d.column]); // Use filteredData instead of data
+                    const minVal = d3.min(columnData) - (d3.max(columnData) - d3.min(columnData)) * minMaxRatio;
+                    colorScale.domain([minVal, d3.max(columnData)]);
+                    color = colorScale(+d.value);
+                } 
+                else if (rainbowColumns.includes(d.column)) {
+                    const rainbowScale = d3.scaleSequential(d3.interpolateRainbow)
+                        .domain([d3.min(filteredData, r => +r[d.column]), d3.max(filteredData, r => +r[d.column])]); // Use filteredData instead of data
+                    color = rainbowScale(+d.value);
+                } 
+                else if (['name', 'acronym'].includes(d.column)) {
+                    color = "#" + d.rowData.color_hex_triplet;
+                } 
+                else if (['color_hex_triplet', 'svg_hex'].includes(d.column)) {
+                    color = "#" + d.value;
+                }
+                return color;
+            })
+            .style("color", function(d) {
+                let color = d3.select(this).style("background-color");
+                if (viridisColumns.includes(d.column) || rainbowColumns.includes(d.column) || ['name', 'acronym', 'color_hex_triplet', 'svg_hex'].includes(d.column)) {
+                    // Calculate brightness of the cell color
+                    const rgb = d3.rgb(color);
+                    const brightness = Math.round(Math.sqrt(
+                        rgb.r * rgb.r * .299 +
+                        rgb.g * rgb.g * .587 +
+                        rgb.b * rgb.b * .114
+                    ));
+                    // Use white font for dark cells and black font for light cells
+                    color = brightness < 80 ? "#fff" : "#000";
+                }
+                return color;
+            });
         }
-    })
-            .style("color", 'black');
-    }
 
     // Call the function to initiate the merging process
     loadAndMergeData();
@@ -189,4 +292,3 @@
 
 </body>
 </html>
-
