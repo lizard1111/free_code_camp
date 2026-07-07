@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Saline Cell Region Explorer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">AIND SmartSPIM LCA 25 um atlas</p>
+      <h1>Saline Cell Region Explorer</h1>
+    </div>
+    <button id="downloadButton" class="command-button" type="button" title="Download the currently filtered rows as CSV">Download CSV</button>
+  </header>
+
+  <main>
+    <section class="summary-strip" aria-label="Dataset summary">
+      <div><span>Total cells</span><strong>541,861</strong></div>
+      <div><span>Assigned</span><strong>507,241</strong></div>
+      <div><span>Atlas region IDs</span><strong id="regionCount">671</strong></div>
+      <div><span>Regions with cells</span><strong>655</strong></div>
+      <div><span>Assignment rate</span><strong>93.6%</strong></div>
+    </section>
+
+    <section class="toolbar" aria-label="Table controls">
+      <label class="search-control">
+        <span>Search</span>
+        <input id="searchInput" type="search" placeholder="Region, acronym, or ID">
+      </label>
+      <div class="color-key"><span>Row color</span><strong>Exact atlas RGB</strong></div>
+      <label>
+        <span>Max depth</span>
+        <select id="depthSelect"></select>
+      </label>
+      <label class="toggle-control">
+        <input id="populatedOnly" type="checkbox">
+        <span>Only regions with cells</span>
+      </label>
+      <div class="tree-actions" role="group" aria-label="Hierarchy controls">
+        <button id="expandButton" type="button">Expand all</button>
+        <button id="collapseButton" type="button">Collapse all</button>
+      </div>
+    </section>
+
+    <div class="table-meta">
+      <span id="visibleCount"></span>
+      <span>Volumes and densities use exact annotation voxels at 25 um isotropic.</span>
+    </div>
+
+    <section class="table-shell" aria-label="Hierarchical region table">
+      <table>
+        <thead>
+          <tr>
+            <th class="region-column">Region hierarchy</th>
+            <th>Acronym</th>
+            <th>Region ID</th>
+            <th>Direct cells</th>
+            <th>Volume (mm3)</th>
+            <th>Density (cells/mm3)</th>
+            <th>Inclusive cells</th>
+            <th>Inclusive density</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <div id="emptyState" class="empty-state" hidden>No regions match these filters.</div>
+    </section>
+  </main>
+
+  <script src="region-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
